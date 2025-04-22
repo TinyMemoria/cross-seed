@@ -1,37 +1,33 @@
-# Build Stage
-FROM arm32v7/node:20-slim AS build-stage
+FROM arm32v7/alpine:3.17 AS build-stage
+
+# Install node + build dependencies
+RUN apk add --no-cache nodejs npm git python3 make g++
+
 WORKDIR /usr/src/cross-seed
 COPY package*.json ./
-ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 RUN npm ci --no-fund
+
 COPY tsconfig.json ./
-COPY src src
+COPY src ./src
+
 RUN npm run build && \
     npm prune --omit=dev && \
     rm -rf src tsconfig.json
 
 # Production Stage
-FROM arm32v7/node:20-slim
+FROM arm32v7/alpine:3.17
 
-# Install tini for process management and clean signal handling
-RUN apt-get update && \
-    apt-get install -y curl tzdata tini && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache nodejs npm tini curl tzdata
 
-# Setup app
 WORKDIR /usr/src/cross-seed
 COPY --from=build-stage /usr/src/cross-seed ./
+
 RUN npm link
 
-# Environment setup
 ENV CONFIG_DIR=/config
 ENV DOCKER_ENV=true
 
-# Expose default port
 EXPOSE 2468
-
-# Set working dir to config (mount volume here in Portainer)
 WORKDIR /config
 
-# Use tini as the container's init system
-ENTRYPOINT ["/usr/bin/tini", "--", "cross-seed"]
+ENTRYPOINT ["/sbin/tini", "--", "cross-seed"]
